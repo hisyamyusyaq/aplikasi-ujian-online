@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Ujian Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; overscroll-behavior: contain; }
+        .page { display: none; }
+        .page.active { display: block; }
+        .page.flex-center { display: flex; align-items: center; justify-content: center; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        .disabled { pointer-events: none; opacity: 0.5; }
+        .admin-nav-link-mobile.active { color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); }
+
+        /* --- Animasi & Efek Baru --- */
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .modal-animate { animation: fadeIn 0.2s ease-out forwards; }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .question-animate { animation: slideIn 0.3s ease-out forwards; }
+
+        @keyframes aurora {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .aurora-bg {
+            background: radial-gradient(ellipse at top, rgba(192, 132, 252, 0.2), transparent 70%),
+                        radial-gradient(ellipse at bottom, rgba(59, 130, 246, 0.2), transparent 70%);
+            background-size: 200% 200%;
+            animation: aurora 15s ease infinite;
+        }
+
+        .option-label { transition: all 0.2s ease-in-out; }
+        .option-label:has(input:checked) {
+            border-color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+        .option-label:has(input:checked)::after {
+            content: '\f00c'; /* Font Awesome check icon */
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%) scale(0);
+            color: #3b82f6;
+            font-size: 1.2rem;
+            animation: popIn 0.2s ease-out forwards;
+        }
+        @keyframes popIn { from { transform: translateY(-50%) scale(0); } to { transform: translateY(-50%) scale(1); } }
+
+        .table-zebra tbody tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.02); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 antialiased aurora-bg">
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center hidden">
+    <div class="flex flex-col items-center">
+        <i class="fas fa-spinner fa-spin fa-3x text-blue-500"></i>
+        <p class="mt-4 text-lg">Memproses...</p>
+    </div>
+</div>
+
+<!-- Main Container -->
+<div id="app-container" class="min-h-screen">
+
+    <!-- PAGE 1: URL Setup -->
+    <div id="url-setup-page" class="page min-h-screen p-4">
+        <div class="w-full max-w-md bg-gray-800/80 backdrop-blur-sm p-8 rounded-2xl shadow-2xl m-auto border border-gray-700">
+            <h1 class="text-2xl font-bold text-center mb-2 text-white select-none">Setup Aplikasi</h1>
+            <p class="text-center text-gray-400 mb-6 select-none">Masukkan URL Web App dari Google Apps Script Anda.</p>
+            <div class="relative mb-4">
+                <i class="fas fa-link absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <input type="url" id="web-app-url" class="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300" placeholder="https://script.google.com/macros/s/...">
+            </div>
+            <button id="save-url-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-blue-500/50 select-none">Simpan dan Lanjutkan</button>
+            <p class="text-xs text-gray-500 mt-4 text-center select-none">URL ini akan disimpan di browser Anda.</p>
+        </div>
+    </div>
+
+    <!-- PAGE 2: Login Page -->
+    <div id="login-page" class="page min-h-screen p-4">
+        <div class="w-full max-w-md bg-gray-800/80 backdrop-blur-sm p-8 rounded-2xl shadow-2xl m-auto border border-gray-700">
+            <h1 class="text-2xl font-bold text-center mb-6 text-white select-none">Login Aplikasi Ujian</h1>
+            <div class="mb-4 border-b border-gray-700">
+                <nav class="flex -mb-px">
+                    <button id="user-login-tab" class="w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm border-blue-500 text-blue-400 transition-all duration-300 select-none">Login Siswa</button>
+                    <button id="admin-login-tab" class="w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-500 transition-all duration-300 select-none">Login Admin</button>
+                </nav>
+            </div>
+            <!-- User Login Form -->
+            <form id="user-login-form">
+                <div class="relative mb-4">
+                    <i class="fas fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="user-id" class="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300" required placeholder="NIS / Username">
+                </div>
+                <div class="relative mb-6">
+                    <i class="fas fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="password" id="user-password" class="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300" required placeholder="Password">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-blue-500/50 select-none">Login</button>
+            </form>
+            <!-- Admin Login Form -->
+            <form id="admin-login-form" class="hidden">
+                <div class="relative mb-4">
+                    <i class="fas fa-user-shield absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="admin-username" class="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300" required placeholder="Username Admin">
+                </div>
+                <div class="relative mb-6">
+                    <i class="fas fa-key absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="password" id="admin-password" class="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300" required placeholder="Password">
+                </div>
+                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-green-500/50 select-none">Login Admin</button>
+            </form>
+            <p id="login-error" class="text-red-500 text-sm mt-4 text-center"></p>
+            <button id="reset-url-btn" class="w-full text-center text-xs text-gray-500 hover:text-gray-300 mt-4 transition-colors duration-300 select-none">Ganti Web App URL</button>
+        </div>
+    </div>
+
+    <!-- PAGE 3: Admin Dashboard -->
+    <div id="admin-page" class="page">
+        <div class="flex h-screen bg-gray-900">
+            <!-- Sidebar (Desktop) -->
+            <aside class="w-64 bg-gray-800/50 border-r border-gray-700 text-white flex-col hidden lg:flex">
+                <div class="p-4 border-b border-gray-700">
+                    <h2 class="text-xl font-bold text-white select-none">Admin Panel</h2>
+                    <p id="admin-welcome" class="text-sm text-gray-400 select-none"></p>
+                </div>
+                <nav id="admin-nav-desktop" class="flex-1 p-4 space-y-2">
+                    <a href="#dashboard" class="admin-nav-link flex items-center px-4 py-2 rounded-lg bg-blue-600 transition-all duration-300 select-none"><i class="fas fa-tachometer-alt w-6"></i> Dashboard</a>
+                    <a href="#questions" class="admin-nav-link flex items-center px-4 py-2 rounded-lg hover:bg-gray-700/50 transition-all duration-300 select-none"><i class="fas fa-list-alt w-6"></i> Soal</a>
+                    <a href="#users" class="admin-nav-link flex items-center px-4 py-2 rounded-lg hover:bg-gray-700/50 transition-all duration-300 select-none"><i class="fas fa-users w-6"></i> User</a>
+                    <a href="#scores" class="admin-nav-link flex items-center px-4 py-2 rounded-lg hover:bg-gray-700/50 transition-all duration-300 select-none"><i class="fas fa-graduation-cap w-6"></i> Hasil</a>
+                    <a href="#settings" class="admin-nav-link flex items-center px-4 py-2 rounded-lg hover:bg-gray-700/50 transition-all duration-300 select-none"><i class="fas fa-cog w-6"></i> Pengaturan</a>
+                </nav>
+                <div class="p-4 border-t border-gray-700">
+                    <button id="admin-logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-red-500/50 select-none">Logout</button>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 p-6 overflow-y-auto pb-24 lg:pb-6">
+                <!-- Header (Mobile) -->
+                <div class="lg:hidden flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-white select-none">Admin Panel</h2>
+                        <p id="admin-welcome-mobile" class="text-sm text-gray-400 select-none"></p>
+                    </div>
+                    <button id="admin-logout-btn-mobile" class="bg-red-600 hover:bg-red-700 text-white font-bold w-12 h-10 flex items-center justify-center rounded-lg transition-all duration-300 transform active:scale-95 select-none"><i class="fas fa-sign-out-alt"></i></button>
+                </div>
+
+                <!-- Admin Content Panels -->
+                <div id="admin-panel-dashboard" class="admin-panel">
+                    <h1 class="text-3xl font-bold mb-6 text-white">Dashboard</h1>
+                    <div id="dashboard-stats" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6"></div>
+                    <h2 class="text-2xl font-bold mb-4 text-white">Status Pengerjaan Siswa</h2>
+                    <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-lg overflow-x-auto">
+                        <table class="w-full text-left min-w-[600px] table-zebra">
+                            <thead>
+                            <tr class="border-b-2 border-gray-700">
+                                <th class="p-3">NIS</th><th class="p-3">Nama</th><th class="p-3">Kelas</th>
+                                <th class="p-3">Status</th><th class="p-3">Waktu Mulai</th><th class="p-3">Aksi</th>
+                            </tr>
+                            </thead>
+                            <tbody id="student-status-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="admin-panel-questions" class="admin-panel hidden">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <h1 class="text-3xl font-bold text-white">Manajemen Soal</h1>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="add-question-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-blue-500/50 select-none"><i class="fas fa-plus"></i> Tambah</button>
+                            <button id="import-questions-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-yellow-500/50 select-none"><i class="fas fa-file-import"></i> Impor</button>
+                            <button id="export-questions-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-green-500/50 select-none"><i class="fas fa-file-export"></i> Ekspor</button>
+                            <input type="file" id="import-questions-input" class="hidden" accept=".csv">
+                        </div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-lg overflow-x-auto">
+                        <table class="w-full text-left min-w-[800px] table-zebra">
+                            <thead>
+                            <tr class="border-b-2 border-gray-700"><th class="p-3">No</th><th class="p-3 w-1/3">Pertanyaan</th><th class="p-3">Gambar</th><th class="p-3">Opsi A</th><th class="p-3">Opsi B</th><th class="p-3">Opsi C</th><th class="p-3">Opsi D</th><th class="p-3">Jawaban</th><th class="p-3">Aksi</th></tr>
+                            </thead>
+                            <tbody id="questions-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="admin-panel-users" class="admin-panel hidden">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <h1 class="text-3xl font-bold text-white">Manajemen User</h1>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="add-user-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-blue-500/50 select-none"><i class="fas fa-user-plus"></i> Tambah</button>
+                            <button id="import-users-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-yellow-500/50 select-none"><i class="fas fa-file-import"></i> Impor</button>
+                            <button id="export-users-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-green-500/50 select-none"><i class="fas fa-file-export"></i> Ekspor</button>
+                            <input type="file" id="import-users-input" class="hidden" accept=".csv">
+                        </div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-lg overflow-x-auto">
+                        <table class="w-full text-left min-w-[600px] table-zebra">
+                            <thead>
+                            <tr class="border-b-2 border-gray-700"><th class="p-3">Username</th><th class="p-3">Nama</th><th class="p-3">Kelas</th><th class="p-3">Password</th><th class="p-3">Aksi</th></tr>
+                            </thead>
+                            <tbody id="users-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="admin-panel-scores" class="admin-panel hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h1 class="text-3xl font-bold text-white">Hasil Ujian</h1>
+                        <button id="export-scores-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-green-500/50 select-none"><i class="fas fa-file-export"></i> Ekspor</button>
+                    </div>
+                    <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-lg overflow-x-auto">
+                        <table class="w-full text-left min-w-[600px] table-zebra">
+                            <thead>
+                            <tr class="border-b-2 border-gray-700"><th class="p-3">NIS</th><th class="p-3">Nama</th><th class="p-3">Kelas</th><th class="p-3">Skor</th><th class="p-3">Waktu Selesai</th></tr>
+                            </thead>
+                            <tbody id="scores-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="admin-panel-settings" class="admin-panel hidden">
+                    <h1 class="text-3xl font-bold mb-6 text-white">Pengaturan Ujian</h1>
+                    <div class="bg-gray-800/50 border border-gray-700 p-6 rounded-lg max-w-md">
+                        <div class="mb-4">
+                            <label for="exam-duration" class="block text-sm font-medium text-gray-300 mb-2">Durasi Ujian (menit)</label>
+                            <input type="number" id="exam-duration" min="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300">
+                        </div>
+                        <div class="mb-6">
+                            <label for="exam-question-count" class="block text-sm font-medium text-gray-300 mb-2">Jumlah Soal yang Digunakan</label>
+                            <input type="number" id="exam-question-count" min="0" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0 = semua soal">
+                            <p class="text-xs text-gray-500 mt-1">Isi 0 untuk menggunakan semua soal yang ada di database.</p>
+                        </div>
+                        <button id="save-settings-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-blue-500/50 select-none">Simpan Pengaturan</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+        <!-- Bottom Nav (Mobile) -->
+        <nav id="admin-nav-mobile" class="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-800/80 backdrop-blur-sm border-t border-gray-700 flex justify-around">
+            <a href="#dashboard" class="admin-nav-link-mobile flex-1 flex flex-col items-center justify-center p-2 text-gray-400 active transition-colors duration-300 select-none">
+                <i class="fas fa-tachometer-alt text-xl"></i><span class="text-xs mt-1">Dashboard</span>
+            </a>
+            <a href="#questions" class="admin-nav-link-mobile flex-1 flex flex-col items-center justify-center p-2 text-gray-400 transition-colors duration-300 select-none">
+                <i class="fas fa-list-alt text-xl"></i><span class="text-xs mt-1">Soal</span>
+            </a>
+            <a href="#users" class="admin-nav-link-mobile flex-1 flex flex-col items-center justify-center p-2 text-gray-400 transition-colors duration-300 select-none">
+                <i class="fas fa-users text-xl"></i><span class="text-xs mt-1">User</span>
+            </a>
+            <a href="#scores" class="admin-nav-link-mobile flex-1 flex flex-col items-center justify-center p-2 text-gray-400 transition-colors duration-300 select-none">
+                <i class="fas fa-graduation-cap text-xl"></i><span class="text-xs mt-1">Hasil</span>
+            </a>
+            <a href="#settings" class="admin-nav-link-mobile flex-1 flex flex-col items-center justify-center p-2 text-gray-400 transition-colors duration-300 select-none">
+                <i class="fas fa-cog text-xl"></i><span class="text-xs mt-1">Atur</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- PAGE 4: User Exam Page -->
+    <div id="user-page" class="page">
+        <header class="bg-gray-800/80 backdrop-blur-sm p-4 flex justify-between items-center shadow-md sticky top-0 z-10 border-b border-gray-700">
+            <div>
+                <h1 class="text-xl font-bold text-white">Ujian Online</h1>
+                <p id="user-info" class="text-sm text-gray-400"></p>
+            </div>
+            <div id="exam-timer" class="text-2xl font-mono bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg">00:00</div>
+        </header>
+        <main id="user-main-content" class="p-4 sm:p-6 max-w-7xl mx-auto w-full">
+            <div id="pre-exam-view" class="text-center max-w-2xl mx-auto mt-10">
+                <div class="bg-gray-800/50 border border-gray-700 p-8 rounded-2xl">
+                    <h2 class="text-3xl font-bold mb-4 text-white">Selamat Datang di Ujian Online</h2>
+                    <p class="text-gray-400 mb-6">Ujian akan dimulai setelah Anda menekan tombol di bawah. Waktu akan berjalan otomatis.</p>
+                    <p class="mb-2 text-white">Total Soal: <span id="total-questions" class="font-bold"></span></p>
+                    <p class="mb-8 text-white">Waktu Pengerjaan: <span id="exam-time-limit" class="font-bold"></span> Menit</p>
+                    <button id="start-exam-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-blue-500/50 animate-pulse select-none">Mulai Ujian</button>
+                </div>
+            </div>
+            <div id="exam-view" class="hidden">
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-4"><div id="exam-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+                <div class="flex flex-col lg:flex-row gap-6">
+                    <div id="question-card" class="flex-1 bg-gray-800/50 border border-gray-700 p-6 rounded-lg">
+                        <div class="mb-4 text-gray-400">Soal <span id="question-number">1</span> dari <span id="total-questions-exam"></span></div>
+                        <div id="question-text" class="text-lg mb-6 leading-relaxed"></div>
+                        <div id="options-container" class="space-y-4"></div>
+                        <div class="mt-8 flex justify-between items-center">
+                            <button id="prev-question-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform active:scale-95 select-none">Sebelumnya</button>
+                            <button id="next-question-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform active:scale-95 select-none">Selanjutnya</button>
+                        </div>
+                    </div>
+                    <div class="w-full lg:w-64">
+                        <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-lg">
+                            <h3 class="font-bold mb-4 text-white">Navigasi Soal</h3>
+                            <div id="question-nav" class="grid grid-cols-5 gap-2 mb-4"></div>
+                            <button id="finish-exam-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg hover:shadow-red-500/50 select-none">Selesaikan Ujian</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="post-exam-view" class="hidden text-center max-w-2xl mx-auto mt-10">
+                <div class="bg-gray-800/50 border border-gray-700 p-8 rounded-2xl">
+                    <i class="fas fa-check-circle text-green-400 text-6xl mb-4"></i>
+                    <h2 class="text-3xl font-bold mb-4 text-white">Ujian Selesai!</h2>
+                    <p class="text-gray-400 mb-8">Terima kasih telah menyelesaikan ujian.</p>
+                    <div>
+                        <p class="text-lg mb-2 text-gray-300">Skor Anda:</p>
+                        <p id="final-score-value" class="text-6xl font-bold text-green-400">-</p>
+                    </div>
+                    <button id="user-logout-btn" class="mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 transform active:scale-95 select-none">Logout</button>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center hidden p-4">
+    <div id="modal-content" class="bg-gray-800/80 backdrop-blur-sm border border-gray-700 p-6 rounded-lg shadow-xl w-full max-w-lg"></div>
+</div>
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // --- STATE MANAGEMENT ---
+        let webAppUrl = localStorage.getItem('webAppUrl');
+        let currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+        let examState = {};
+        let examTimerInterval = null;
+
+        // --- DOM ELEMENTS ---
+        const pages = {
+            urlSetup: document.getElementById('url-setup-page'),
+            login: document.getElementById('login-page'),
+            admin: document.getElementById('admin-page'),
+            user: document.getElementById('user-page'),
+        };
+        const loadingOverlay = document.getElementById('loading-overlay');
+
+        // --- UTILITY FUNCTIONS ---
+        const showPage = (pageName) => {
+            Object.values(pages).forEach(page => {
+                page.classList.remove('active', 'flex-center');
+                page.style.display = 'none';
+            });
+            if (pages[pageName]) {
+                 if(pageName === 'login' || pageName === 'urlSetup'){
+                    pages[pageName].classList.add('active', 'flex-center');
+                    pages[pageName].style.display = 'flex';
+                 } else {
+                    pages[pageName].classList.add('active');
+                    pages[pageName].style.display = 'block';
+                 }
+            }
+        };
+
+        const showLoading = (show) => loadingOverlay.classList.toggle('hidden', !show);
+
+        const showAlert = (message, type = 'error') => {
+            const color = type === 'error' ? 'bg-red-500' : 'bg-green-500';
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `fixed top-5 right-5 ${color} text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-all duration-300 transform translate-x-full`;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+            setTimeout(() => alertDiv.classList.remove('translate-x-full'), 100);
+            setTimeout(() => {
+                alertDiv.classList.add('translate-x-full');
+                alertDiv.addEventListener('transitionend', () => alertDiv.remove());
+            }, 3000);
+        };
+
+        const showModal = (content, size = 'max-w-lg') => {
+            const modal = document.getElementById('modal');
+            const modalContent = document.getElementById('modal-content');
+            modalContent.className = `bg-gray-800/80 backdrop-blur-sm border border-gray-700 p-6 rounded-lg shadow-xl w-full ${size} modal-animate`;
+            modalContent.innerHTML = content;
+            modal.classList.remove('hidden');
+            modal.querySelector('.close-modal-btn')?.addEventListener('click', () => modal.classList.add('hidden'));
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+        };
+
+        const hideModal = () => document.getElementById('modal').classList.add('hidden');
+
+        const showConfirmModal = (message) => {
+            return new Promise((resolve) => {
+                const modalHTML = `
+                    <h3 class="text-xl font-semibold mb-4 text-white">Konfirmasi</h3>
+                    <p class="text-gray-300 mb-6">${message}</p>
+                    <div class="flex justify-end gap-4">
+                        <button id="modal-confirm-no" class="bg-gray-600 hover:bg-gray-700 text-white font-bold px-6 py-2 rounded-lg transition-all duration-300 transform active:scale-95">Tidak</button>
+                        <button id="modal-confirm-yes" class="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2 rounded-lg transition-all duration-300 transform active:scale-95">Ya</button>
+                    </div>
+                `;
+                showModal(modalHTML, 'max-w-md');
+                const yesBtn = document.getElementById('modal-confirm-yes');
+                const noBtn = document.getElementById('modal-confirm-no');
+                const listener = (val) => { hideModal(); resolve(val); };
+                yesBtn.onclick = () => listener(true);
+                noBtn.onclick = () => listener(false);
+            });
+        };
+
+        const shuffleArray = (array) => {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        };
+
+        const callWebApp = (params) => {
+            return new Promise((resolve, reject) => {
+                if (!webAppUrl) return reject(new Error('Web App URL not set.'));
+                showLoading(true);
+                const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+                window[callbackName] = (data) => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    showLoading(false);
+                    if (data.status === 'success') resolve(data.data);
+                    else reject(new Error(data.message || 'Unknown error.'));
+                };
+                const script = document.createElement('script');
+                const url = new URL(webAppUrl);
+                url.searchParams.set('callback', callbackName);
+                for (const key in params) url.searchParams.set(key, params[key]);
+                script.src = url.toString();
+                script.onerror = () => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    showLoading(false);
+                    reject(new Error('Network error or invalid Web App URL.'));
+                };
+                document.body.appendChild(script);
+            });
+        };
+
+        const postToWebApp = (action, data) => {
+            return new Promise((resolve, reject) => {
+                if (!webAppUrl) return reject(new Error('Web App URL not set.'));
+                showLoading(true);
+                const payload = { action, data };
+                fetch(webAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload),
+                    mode: 'no-cors'
+                })
+                .then(res => {
+                    showLoading(false);
+                    resolve({ status: 'success', message: 'Operation sent.' });
+                })
+                .catch(err => {
+                    showLoading(false);
+                    reject(err);
+                });
+            });
+        };
+
+        // --- INITIALIZATION ---
+        const init = () => {
+            if (!webAppUrl) showPage('urlSetup');
+            else if (currentUser) {
+                if (currentUser.role === 'admin') { showPage('admin'); initAdminPage(); }
+                else { showPage('user'); initUserPage(); }
+            } else showPage('login');
+        };
+
+        // --- URL SETUP LOGIC ---
+        document.getElementById('save-url-btn').addEventListener('click', function() {
+            const btn = this;
+            const url = document.getElementById('web-app-url').value.trim();
+            if (!url || !url.startsWith('https://script.google.com/macros/s/')) {
+                return showAlert('URL tidak valid.', 'error');
+            }
+            btn.classList.add('disabled');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+            try {
+                localStorage.setItem('webAppUrl', url);
+                if (localStorage.getItem('webAppUrl') === url) {
+                    webAppUrl = url;
+                    showAlert('URL berhasil disimpan!', 'success');
+                    setTimeout(() => showPage('login'), 500);
+                } else throw new Error("Gagal menyimpan.");
+            } catch (e) {
+                showAlert(`Error: ${e.message}`, 'error');
+            } finally {
+                btn.classList.remove('disabled');
+                btn.innerHTML = 'Simpan dan Lanjutkan';
+            }
+        });
+
+        document.getElementById('reset-url-btn').addEventListener('click', async () => {
+            if(await showConfirmModal('Yakin ingin ganti Web App URL? Anda akan logout.')){
+                localStorage.removeItem('webAppUrl');
+                sessionStorage.removeItem('currentUser');
+                location.reload();
+            }
+        });
+
+        // --- LOGIN LOGIC ---
+        const userLoginTab = document.getElementById('user-login-tab');
+        const adminLoginTab = document.getElementById('admin-login-tab');
+        const userLoginForm = document.getElementById('user-login-form');
+        const adminLoginForm = document.getElementById('admin-login-form');
+        const loginError = document.getElementById('login-error');
+
+        const switchLoginTab = (isAdmin) => {
+            userLoginForm.classList.toggle('hidden', isAdmin);
+            adminLoginForm.classList.toggle('hidden', !isAdmin);
+            userLoginTab.classList.toggle('border-blue-500', !isAdmin);
+            userLoginTab.classList.toggle('text-blue-400', !isAdmin);
+            adminLoginTab.classList.toggle('border-blue-500', isAdmin);
+            adminLoginTab.classList.toggle('text-blue-400', isAdmin);
+        };
+        userLoginTab.addEventListener('click', () => switchLoginTab(false));
+        adminLoginTab.addEventListener('click', () => switchLoginTab(true));
+
+        const handleLogin = (role, credentials) => {
+            callWebApp({ action: 'login', role, ...credentials })
+                .then(data => {
+                    currentUser = { ...data, role };
+                    sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    if (role === 'admin') { showPage('admin'); initAdminPage(); }
+                    else { showPage('user'); initUserPage(); }
+                })
+                .catch(err => { loginError.textContent = `Login gagal: ${err.message}`; });
+        };
+
+        userLoginForm.addEventListener('submit', (e) => {
+            e.preventDefault(); loginError.textContent = '';
+            handleLogin('user', { username: document.getElementById('user-id').value, password: document.getElementById('user-password').value });
+        });
+
+        adminLoginForm.addEventListener('submit', (e) => {
+            e.preventDefault(); loginError.textContent = '';
+            handleLogin('admin', { username: document.getElementById('admin-username').value, password: document.getElementById('admin-password').value });
+        });
+
+        const handleLogout = () => {
+            sessionStorage.removeItem('currentUser');
+            if(examTimerInterval) clearInterval(examTimerInterval);
+            location.reload();
+        };
+        document.getElementById('admin-logout-btn').addEventListener('click', handleLogout);
+        document.getElementById('admin-logout-btn-mobile').addEventListener('click', handleLogout);
+
+        // --- ADMIN PAGE LOGIC ---
+        const initAdminPage = () => {
+            const welcomeMsg = `Selamat datang, ${currentUser.name}`;
+            document.getElementById('admin-welcome').textContent = welcomeMsg;
+            document.getElementById('admin-welcome-mobile').textContent = welcomeMsg;
+
+            const setActiveLink = (panelId) => {
+                document.querySelectorAll('#admin-nav-desktop .admin-nav-link').forEach(l => {
+                    l.classList.toggle('bg-blue-600', l.getAttribute('href') === `#${panelId}`);
+                });
+                document.querySelectorAll('#admin-nav-mobile .admin-nav-link-mobile').forEach(l => {
+                    l.classList.toggle('active', l.getAttribute('href') === `#${panelId}`);
+                });
+            };
+
+            const setupNavLinks = (containerSelector) => {
+                document.querySelectorAll(`${containerSelector} a`).forEach(link => {
+                    link.addEventListener('click', e => {
+                        e.preventDefault();
+                        const panelId = link.getAttribute('href').substring(1);
+                        setActiveLink(panelId);
+                        loadAdminPanel(panelId);
+                    });
+                });
+            };
+
+            setupNavLinks('#admin-nav-desktop');
+            setupNavLinks('#admin-nav-mobile');
+
+            loadAdminPanel('dashboard');
+        };
+
+        const loadAdminPanel = (panelId) => {
+            document.querySelectorAll('.admin-panel').forEach(panel => panel.classList.add('hidden'));
+            document.getElementById(`admin-panel-${panelId}`).classList.remove('hidden');
+            const loaders = {
+                dashboard: loadAdminDashboard, questions: loadAdminQuestions,
+                users: loadAdminUsers, scores: loadAdminScores, settings: loadAdminSettings
+            };
+            if(loaders[panelId]) loaders[panelId]();
+        };
+
+        const loadAdminDashboard = async () => {
+            try {
+                const data = await callWebApp({ action: 'getDashboardData' });
+                document.getElementById('dashboard-stats').innerHTML = `
+                    <div class="bg-gray-800/50 border border-gray-700 p-6 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"><p class="text-sm text-gray-400">Total Siswa</p><p class="text-3xl font-bold text-white">${data.stats.total}</p></div>
+                    <div class="bg-gray-800/50 border border-gray-700 p-6 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"><p class="text-sm text-gray-400">Sudah Mengerjakan</p><p class="text-3xl font-bold text-green-400">${data.stats.finished}</p></div>
+                    <div class="bg-gray-800/50 border border-gray-700 p-6 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"><p class="text-sm text-gray-400">Belum Mengerjakan</p><p class="text-3xl font-bold text-yellow-400">${data.stats.not_started}</p></div>
+                `;
+                document.getElementById('student-status-table').innerHTML = data.statuses.map(s => {
+                     const badges = { 'Selesai': 'bg-green-600', 'Mengerjakan': 'bg-yellow-500' };
+                     const badgeClass = badges[s.status] || 'bg-gray-600';
+                     const statusBadge = `<span class="${badgeClass} text-white text-xs font-medium mr-2 px-2.5 py-0.5 rounded-full">${s.status}</span>`;
+
+                     let actionButton = '-';
+                     if (s.status === 'Mengerjakan') {
+                        actionButton = `<button class="text-blue-400 hover:text-blue-300 text-sm px-2 py-1 rounded transition-colors duration-300" title="Izinkan user untuk melanjutkan jika terputus" onclick="allowContinue('${s.nis}', '${s.name}')"><i class="fas fa-play-circle"></i> Izinkan Lanjut</button>`;
+                     } else if (s.status === 'Selesai') {
+                        actionButton = `<button class="text-yellow-500 hover:text-yellow-400 text-sm px-2 py-1 rounded transition-colors duration-300" title="Reset status dan hapus skor agar bisa ujian ulang" onclick="resetForRetake('${s.nis}', '${s.name}')"><i class="fas fa-undo"></i> Reset Ujian</button>`;
+                     }
+
+                     return `<tr class="border-b border-gray-700 hover:bg-gray-800 transition-colors duration-300">
+                        <td class="p-3">${s.nis}</td><td class="p-3">${s.name}</td><td class="p-3">${s.class}</td>
+                        <td class="p-3">${statusBadge}</td><td class="p-3">${s.startTime || '-'}</td><td class="p-3 text-center">${actionButton}</td>
+                     </tr>`;
+                }).join('');
+            } catch (err) { showAlert(`Gagal memuat dashboard: ${err.message}`); }
+        };
+
+        const loadAdminQuestions = async () => {
+            try {
+                const questions = await callWebApp({ action: 'getQuestions' });
+                document.getElementById('questions-table').innerHTML = questions.map((q, index) => `
+                    <tr class="border-b border-gray-700 hover:bg-gray-800 text-sm transition-colors duration-300">
+                        <td class="p-3">${index + 1}</td><td class="p-3">${q.question}</td>
+                        <td class="p-3">${q.imageUrl ? `<img src="${q.imageUrl}" class="h-10 w-16 object-cover rounded" alt="Gambar soal">` : '-'}</td>
+                        ${q.options.map(opt => `<td class="p-3">${opt}</td>`).join('')}
+                        <td class="p-3 font-bold">${q.answer}</td>
+                        <td class="p-3"><button class="text-red-500 hover:text-red-400 transition-colors duration-300" onclick="deleteQuestion('${q.id}')"><i class="fas fa-trash"></i></button></td>
+                    </tr>
+                `).join('');
+            } catch(err) { showAlert(`Gagal memuat soal: ${err.message}`); }
+        };
+
+        const loadAdminUsers = async () => {
+            try {
+                const users = await callWebApp({ action: 'getUsers' });
+                document.getElementById('users-table').innerHTML = users.map(u => `
+                    <tr class="border-b border-gray-700 hover:bg-gray-800 transition-colors duration-300"><td class="p-3">${u.username}</td><td class="p-3">${u.name}</td><td class="p-3">${u.class}</td><td class="p-3">${u.password}</td>
+                    <td class="p-3"><button class="text-red-500 hover:text-red-400 transition-colors duration-300" onclick="deleteUser('${u.username}')"><i class="fas fa-trash"></i></button></td></tr>
+                `).join('');
+            } catch(err) { showAlert(`Gagal memuat user: ${err.message}`); }
+        };
+
+        const loadAdminScores = async () => {
+            try {
+                const scores = await callWebApp({ action: 'getScores' });
+                document.getElementById('scores-table').innerHTML = scores.map(s => `
+                    <tr class="border-b border-gray-700 hover:bg-gray-800 transition-colors duration-300"><td class="p-3">${s.nis}</td><td class="p-3">${s.name || s.nama}</td><td class="p-3">${s.class}</td><td class="p-3 font-bold text-green-400">${s.score}</td><td class="p-3">${s.finishedAt}</td></tr>
+                `).join('');
+            } catch(err) { showAlert(`Gagal memuat skor: ${err.message}`); }
+        };
+
+        const loadAdminSettings = async () => {
+            try {
+                const settings = await callWebApp({ action: 'getSettings' });
+                document.getElementById('exam-duration').value = settings.duration;
+                document.getElementById('exam-question-count').value = settings.questionCount || 0;
+            } catch(err) { showAlert(`Gagal memuat pengaturan: ${err.message}`); }
+        };
+
+        // --- ADMIN ACTIONS ---
+        const adminAction = async (action, data, successCallback) => {
+            try {
+                await postToWebApp(action, data);
+                hideModal();
+                showAlert(`Operasi berhasil. Memuat ulang...`, 'success');
+                setTimeout(successCallback, 1500);
+            } catch (err) { showAlert(`Gagal: ${err.message}`); }
+        };
+
+        window.allowContinue = async (username, name) => {
+            if (await showConfirmModal(`Yakin ingin mengizinkan siswa <b>${name} (${username})</b> untuk melanjutkan? Ini akan membuka kunci akun jika sesi terputus.`)) {
+                try {
+                    await postToWebApp('forceLogout', { username });
+                    showAlert(`Akun ${name} berhasil dibuka. Siswa bisa login kembali.`, 'success');
+                    setTimeout(loadAdminDashboard, 1500);
+                } catch (err) {
+                    showAlert(`Gagal membuka kunci akun: ${err.message}`);
+                }
+            }
+        };
+
+        window.resetForRetake = async (username, name) => {
+            if (await showConfirmModal(`Yakin ingin mereset ujian untuk siswa <b>${name} (${username})</b>? Skor dan progres ujian akan dihapus agar siswa bisa mengulang.`)) {
+                try {
+                    await postToWebApp('resetUserStatus', { username });
+                    showAlert(`Status untuk ${name} berhasil direset.`, 'success');
+                    setTimeout(loadAdminDashboard, 1500);
+                } catch (err) {
+                    showAlert(`Gagal mereset status: ${err.message}`);
+                }
+            }
+        };
+
+        document.getElementById('add-question-btn').addEventListener('click', () => {
+            showModal(`
+                <h2 class="text-2xl font-bold mb-4 text-white">Tambah Soal Baru</h2>
+                <form id="add-question-form">
+                    <div class="mb-4"><label class="block mb-1">Pertanyaan</label><textarea id="modal-q-text" class="w-full bg-gray-700 p-2 rounded-lg" rows="3" required></textarea></div>
+                    <div class="mb-4"><label class="block mb-1">URL Gambar (Opsional)</label><input type="url" id="modal-q-image" class="w-full bg-gray-700 p-2 rounded-lg" placeholder="https://..."></div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        ${['A', 'B', 'C', 'D'].map(opt => `<div><label class="block mb-1">Opsi ${opt}</label><input type="text" id="modal-q-opt${opt}" class="w-full bg-gray-700 p-2 rounded-lg" required></div>`).join('')}
+                    </div>
+                    <div class="mb-4"><label class="block mb-1">Jawaban Benar</label><select id="modal-q-ans" class="w-full bg-gray-700 p-2 rounded-lg" required><option>A</option><option>B</option><option>C</option><option>D</option></select></div>
+                    <div class="flex justify-end gap-4 mt-6">
+                        <button type="button" class="close-modal-btn bg-gray-600 hover:bg-gray-700 text-white font-bold px-4 py-2 rounded-lg transition-all duration-300 transform active:scale-95">Batal</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition-all duration-300 transform active:scale-95">Simpan</button>
+                    </div>
+                </form>`);
+            document.getElementById('add-question-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const questionData = {
+                    id: 'q_' + Date.now(),
+                    question: document.getElementById('modal-q-text').value,
+                    imageUrl: document.getElementById('modal-q-image').value,
+                    options: ['A','B','C','D'].map(opt => document.getElementById(`modal-q-opt${opt}`).value),
+                    answer: document.getElementById('modal-q-ans').value
+                };
+                adminAction('addQuestion', questionData, loadAdminQuestions);
+            });
+        });
+
+        window.deleteQuestion = async (id) => {
+            if (await showConfirmModal('Yakin ingin menghapus soal ini?')) {
+                adminAction('deleteData', { sheet: 'questions', id }, loadAdminQuestions);
+            }
+        };
+
+        document.getElementById('add-user-btn').addEventListener('click', () => {
+            showModal(`
+                <h2 class="text-2xl font-bold mb-4 text-white">Tambah User Baru</h2>
+                <form id="add-user-form">
+                    <div class="mb-4"><label class="block mb-1">NIS/Username</label><input type="text" id="modal-u-username" class="w-full bg-gray-700 p-2 rounded-lg" required></div>
+                    <div class="mb-4"><label class="block mb-1">Nama</label><input type="text" id="modal-u-name" class="w-full bg-gray-700 p-2 rounded-lg" required></div>
+                    <div class="mb-4"><label class="block mb-1">Kelas</label><input type="text" id="modal-u-class" class="w-full bg-gray-700 p-2 rounded-lg" required></div>
+                    <div class="mb-4"><label class="block mb-1">Password</label><input type="text" id="modal-u-password" class="w-full bg-gray-700 p-2 rounded-lg" required></div>
+                    <div class="flex justify-end gap-4 mt-6">
+                        <button type="button" class="close-modal-btn bg-gray-600 hover:bg-gray-700 text-white font-bold px-4 py-2 rounded-lg transition-all duration-300 transform active:scale-95">Batal</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition-all duration-300 transform active:scale-95">Simpan</button>
+                    </div>
+                </form>`);
+            document.getElementById('add-user-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const userData = {
+                    username: document.getElementById('modal-u-username').value, name: document.getElementById('modal-u-name').value,
+                    class: document.getElementById('modal-u-class').value, password: document.getElementById('modal-u-password').value
+                };
+                adminAction('addUser', userData, loadAdminUsers);
+            });
+        });
+
+        window.deleteUser = async (username) => {
+            if (await showConfirmModal('Yakin ingin menghapus user ini?')) {
+                adminAction('deleteData', { sheet: 'users', id: username }, loadAdminUsers);
+            }
+        };
+
+        document.getElementById('save-settings-btn').addEventListener('click', () => {
+            const duration = document.getElementById('exam-duration').value;
+            const questionCount = document.getElementById('exam-question-count').value;
+            if(duration > 0) {
+                adminAction('saveSettings', { duration, questionCount }, loadAdminSettings);
+            } else {
+                showAlert('Durasi harus angka positif.');
+            }
+        });
+
+        const handleImport = (fileInput, sheetName, successCallback) => {
+            const file = fileInput.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                adminAction('importData', { sheet: sheetName, data: event.target.result }, successCallback);
+            };
+            reader.readAsText(file);
+            fileInput.value = '';
+        };
+
+        const handleExport = async (sheetName) => {
+            try {
+                const csvContent = await callWebApp({ action: 'exportData', sheet: sheetName });
+                if (!csvContent) return showAlert('Tidak ada data untuk diekspor.');
+                const link = document.createElement("a");
+                link.href = encodeURI("data:text/csv;charset=utf-8," + csvContent);
+                link.download = `${sheetName}_export.csv`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            } catch(err) { showAlert(`Gagal mengekspor data: ${err.message}`); }
+        };
+
+        document.getElementById('import-questions-btn').addEventListener('click', () => document.getElementById('import-questions-input').click());
+        document.getElementById('import-questions-input').addEventListener('change', (e) => handleImport(e.target, 'questions', loadAdminQuestions));
+        document.getElementById('export-questions-btn').addEventListener('click', () => handleExport('questions'));
+
+        document.getElementById('import-users-btn').addEventListener('click', () => document.getElementById('import-users-input').click());
+        document.getElementById('import-users-input').addEventListener('change', (e) => handleImport(e.target, 'users', loadAdminUsers));
+        document.getElementById('export-users-btn').addEventListener('click', () => handleExport('users'));
+
+        document.getElementById('export-scores-btn').addEventListener('click', () => handleExport('scores'));
+
+        // --- USER EXAM PAGE LOGIC ---
+        const initUserPage = async () => {
+            document.getElementById('user-info').textContent = `${currentUser.name} (${currentUser.class || ''})`;
+            document.getElementById('user-logout-btn').addEventListener('click', handleLogout);
+            try {
+                const data = await callWebApp({ action: 'getUserExamData', username: currentUser.username });
+                if (data.status === 'Selesai') {
+                    showUserView('post-exam');
+                    document.getElementById('final-score-value').textContent = data.score || 'N/A';
+                } else {
+
+                    if (data.startTime && data.shuffledQuestions) {
+                        examState.startTime = new Date(data.startTime).getTime();
+                        examState.duration = data.duration;
+                        examState.endTime = examState.startTime + examState.duration * 60 * 1000;
+                        examState.questions = JSON.parse(data.shuffledQuestions);
+                        examState.answers = JSON.parse(data.answers);
+                        examState.currentIndex = data.currentIndex || 0;
+                        resumeExam();
+                    } else {
+                        examState.questions = data.questions;
+                        examState.duration = data.duration;
+                        examState.answers = Array(examState.questions.length).fill(null);
+                        examState.currentIndex = 0;
+
+                        document.getElementById('total-questions').textContent = examState.questions.length;
+                        document.getElementById('exam-time-limit').textContent = data.duration;
+                        document.getElementById('exam-timer').textContent = `${String(data.duration).padStart(2, '0')}:00`;
+                        showUserView('pre-exam');
+                    }
+                }
+            } catch(err) { showAlert(`Gagal memuat data ujian: ${err.message}`); }
+        };
+
+        const showUserView = (view) => {
+            document.getElementById('pre-exam-view').classList.toggle('hidden', view !== 'pre-exam');
+            document.getElementById('exam-view').classList.toggle('hidden', view !== 'exam');
+            document.getElementById('post-exam-view').classList.toggle('hidden', view !== 'post-exam');
+        };
+
+        document.getElementById('start-exam-btn').addEventListener('click', async () => {
+            try {
+                const serverStartTime = new Date().toISOString();
+                await postToWebApp('updateUserStatus', { username: currentUser.username, status: 'Mengerjakan', startTime: serverStartTime });
+
+                examState.startTime = new Date(serverStartTime).getTime();
+                examState.endTime = examState.startTime + examState.duration * 60 * 1000;
+                examState.currentIndex = 0;
+                examState.answers = Array(examState.questions.length).fill(null);
+
+                await saveExamState();
+                startExam();
+
+                    window.UlanganInterface.startExamMode();
+
+            } catch(err) { showAlert(`Gagal memulai ujian: ${err.message}`); }
+        });
+
+        const resumeExam = () => {
+            if (Date.now() > examState.endTime) {
+                finishExam(true);
+                window.UlanganInterface.stopExamMode();
+            } else {
+
+                startExam();
+
+                    window.UlanganInterface.startExamMode();
+
+            }
+        };
+
+        const startExam = () => { showUserView('exam'); renderQuestion(); renderNav(); startTimer(); };
+
+        const startTimer = () => {
+            if(examTimerInterval) clearInterval(examTimerInterval);
+            const timerEl = document.getElementById('exam-timer');
+            examTimerInterval = setInterval(() => {
+                const remaining = examState.endTime - Date.now();
+                if (remaining <= 0) {
+                    clearInterval(examTimerInterval);
+                    timerEl.textContent = '00:00';
+                    return finishExam(true);
+                }
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+                if(seconds % 15 === 0) {
+                    saveExamState(false);
+                }
+            }, 1000);
+        };
+
+        const updateProgressBar = () => {
+            const answeredCount = examState.answers.filter(a => a !== null).length;
+            const total = examState.questions.length;
+            const percentage = total > 0 ? (answeredCount / total) * 100 : 0;
+            document.getElementById('exam-progress-bar').style.width = `${percentage}%`;
+        };
+
+        const renderQuestion = () => {
+            const questionCard = document.getElementById('question-card');
+            questionCard.classList.remove('question-animate');
+            void questionCard.offsetWidth; // Trigger reflow
+            questionCard.classList.add('question-animate');
+
+            const q = examState.questions[examState.currentIndex];
+            const questionTextEl = document.getElementById('question-text');
+            questionTextEl.innerHTML = ''; // Kosongkan dulu
+
+            if (q.imageUrl) {
+                const img = document.createElement('img');
+                img.src = q.imageUrl;
+                img.className = 'max-w-full h-auto rounded-lg mb-4 mx-auto shadow-md';
+                img.onerror = () => { img.style.display = 'none'; };
+                questionTextEl.appendChild(img);
+            }
+
+            const textDiv = document.createElement('div');
+            textDiv.innerHTML = q.question;
+            questionTextEl.appendChild(textDiv);
+
+            document.getElementById('question-number').textContent = examState.currentIndex + 1;
+            document.getElementById('total-questions-exam').textContent = examState.questions.length;
+
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = q.options.map((opt, i) =>
+                `<label class="option-label relative flex items-center p-4 bg-gray-700/50 border border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 transition-all duration-300">
+                    <input type="radio" name="option" value="${['A','B','C','D'][i]}" class="hidden">
+                    <span class="ml-4 text-gray-200 relative">${opt}</span>
+                </label>`
+            ).join('');
+
+            const currentAnswer = examState.answers[examState.currentIndex];
+            if(currentAnswer) {
+                const selectedRadio = optionsContainer.querySelector(`input[value="${currentAnswer}"]`);
+                if(selectedRadio) selectedRadio.checked = true;
+            }
+
+            optionsContainer.querySelectorAll('input[name="option"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    examState.answers[examState.currentIndex] = e.target.value;
+                    updateNavButton();
+                    updateProgressBar();
+                    saveExamState();
+                });
+            });
+            document.getElementById('prev-question-btn').classList.toggle('disabled', examState.currentIndex === 0);
+            document.getElementById('next-question-btn').classList.toggle('disabled', examState.currentIndex === examState.questions.length - 1);
+            updateProgressBar();
+        };
+
+        const renderNav = () => {
+            const navContainer = document.getElementById('question-nav');
+            navContainer.innerHTML = examState.questions.map((_, i) =>
+                `<button data-index="${i}" class="nav-btn w-10 h-10 rounded-lg border border-gray-600 hover:bg-gray-700 transition-all duration-300 transform active:scale-90">${i + 1}</button>`
+            ).join('');
+            navContainer.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    examState.currentIndex = parseInt(btn.dataset.index);
+                    renderQuestion();
+                    updateNavButton();
+                    saveExamState();
+                });
+            });
+            updateNavButton();
+        };
+
+        const updateNavButton = () => {
+            document.querySelectorAll('.nav-btn').forEach((btn, i) => {
+                btn.classList.remove('bg-blue-600', 'bg-green-600', 'text-white');
+                if(examState.answers[i]) {
+                    btn.classList.add('bg-green-600', 'text-white');
+                }
+                if(i === examState.currentIndex) {
+                    btn.classList.remove('bg-green-600');
+                    btn.classList.add('bg-blue-600', 'text-white');
+                }
+            });
+        };
+
+        const navigateQuestion = (offset) => {
+            const newIndex = examState.currentIndex + offset;
+            if (newIndex >= 0 && newIndex < examState.questions.length) {
+                examState.currentIndex = newIndex;
+                renderQuestion();
+                updateNavButton();
+                saveExamState();
+            }
+        };
+        document.getElementById('next-question-btn').addEventListener('click', () => navigateQuestion(1));
+        document.getElementById('prev-question-btn').addEventListener('click', () => navigateQuestion(-1));
+
+        document.getElementById('finish-exam-btn').addEventListener('click', async () => {
+            const unanswered = examState.answers.filter(a => a === null).length;
+            const msg = unanswered > 0 ? `Ada ${unanswered} soal belum dijawab. Yakin selesaikan?` : `Yakin ingin selesaikan ujian?`;
+            if (await showConfirmModal(msg)) finishExam();
+             window.UlanganInterface.stopExamMode();
+        });
+
+        const finishExam = async (isAutoSubmit = false) => {
+            window.UlanganInterface.stopExamMode();
+            if(examTimerInterval) clearInterval(examTimerInterval);
+            await saveExamState();
+            showAlert(isAutoSubmit ? "Waktu habis! Jawaban dikirim otomatis." : "Mengirim jawaban...", isAutoSubmit ? 'error' : 'success');
+            try {
+                const result = await callWebApp({
+                    action: 'submitExam', username: currentUser.username, answers: JSON.stringify(examState.answers)
+                });
+
+                clearExamState();
+                showUserView('post-exam');
+                const scoreEl = document.getElementById('final-score-value');
+                let start = 0;
+                const end = result.score || 0;
+                if (end === 0) {
+                    scoreEl.textContent = 0;
+                    return;
+                }
+                const duration = 1000;
+                const stepTime = Math.abs(Math.floor(duration / end));
+                const timer = setInterval(() => {
+                    start++;
+                    scoreEl.textContent = start;
+                    if (start >= end) {
+                        clearInterval(timer);
+                        scoreEl.textContent = end;
+                    }
+                }, stepTime);
+
+
+
+
+            } catch (err) {
+                showAlert(`Gagal mengirim: ${err.message}. Jawaban tersimpan.`, 'error');
+                startTimer();
+            }
+        };
+
+        const getExamStateKey = () => `examState_${currentUser.username}`;
+
+        const saveExamState = async (showLoader = true) => {
+            if (!currentUser || !examState.questions) return;
+            localStorage.setItem(getExamStateKey(), JSON.stringify(examState));
+            try {
+                const progressData = {
+                    username: currentUser.username,
+                    progress: {
+                        shuffledQuestions: JSON.stringify(examState.questions),
+                        answers: JSON.stringify(examState.answers),
+                        currentIndex: examState.currentIndex
+                    }
+                };
+                await postToWebApp('saveProgress', progressData);
+            } catch (err) {
+                console.error("Gagal menyimpan progres ke server:", err);
+            }
+        };
+
+        const clearExamState = () => localStorage.removeItem(getExamStateKey());
+
+        init();
+    });
+</script>
+
+</body>
+</html>
+
